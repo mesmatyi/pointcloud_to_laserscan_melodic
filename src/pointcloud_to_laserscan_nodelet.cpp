@@ -74,6 +74,9 @@ void PointCloudToLaserScanNodelet::onInit()
   private_nh_.param<int>("concurrency_level", concurrency_level, 1);
   private_nh_.param<bool>("use_inf", use_inf_, false);
 
+
+  max_height_ = 1.0;
+  min_height_ = -1.0;
   // Check if explicitly single threaded, otherwise, let nodelet manager dictate thread pool size
   if (concurrency_level == 1)
   {
@@ -94,9 +97,11 @@ void PointCloudToLaserScanNodelet::onInit()
     input_queue_size_ = boost::thread::hardware_concurrency();
   }
 
+  target_frame_ = "laser";
   // if pointcloud target frame specified, we need to filter by transform availability
   if (!target_frame_.empty())
   {
+    NODELET_INFO("With target frame");
     tf2_.reset(new tf2_ros::Buffer());
     tf2_listener_.reset(new tf2_ros::TransformListener(*tf2_));
     message_filter_.reset(new MessageFilter(sub_, *tf2_, target_frame_, input_queue_size_, nh_));
@@ -105,10 +110,11 @@ void PointCloudToLaserScanNodelet::onInit()
   }
   else  // otherwise setup direct subscription
   {
+    NODELET_INFO("Without target frame");
     sub_.registerCallback(boost::bind(&PointCloudToLaserScanNodelet::cloudCb, this, _1));
   }
 
-  pub_ = nh_.advertise<sensor_msgs::LaserScan>("scan_from_p2", 10, boost::bind(&PointCloudToLaserScanNodelet::connectCb, this),
+  pub_ = nh_.advertise<sensor_msgs::LaserScan>("scan", 10, boost::bind(&PointCloudToLaserScanNodelet::connectCb, this),
                                                boost::bind(&PointCloudToLaserScanNodelet::disconnectCb, this));
 }
 
@@ -151,13 +157,13 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
     output.header.frame_id = target_frame_;
   }
 
-  output.angle_min = angle_min_;
-  output.angle_max = angle_max_;
-  output.angle_increment = angle_increment_;
-  output.time_increment = 0.0;
+  output.angle_min = -1.658;
+  output.angle_max = 1.658;
+  output.angle_increment = 0.0087;
+  output.time_increment = 0.277;
   output.scan_time = scan_time_;
-  output.range_min = range_min_;
-  output.range_max = range_max_;
+  output.range_min = 0.01;
+  output.range_max = 25;
 
   // determine amount of rays to create
   uint32_t ranges_size = std::ceil((output.angle_max - output.angle_min) / output.angle_increment);
@@ -212,7 +218,7 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
       continue;
     }
 
-    double range = hypot(*iter_x, *iter_y);
+    float range = hypot(*iter_x, *iter_y);
     if (range < range_min_)
     {
       NODELET_DEBUG("rejected for range %f below minimum value %f. Point: (%f, %f, %f)", range, range_min_, *iter_x,
@@ -226,7 +232,7 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
       continue;
     }
 
-    double angle = atan2(*iter_y, *iter_x);
+    float angle = atan2(*iter_y, *iter_x);
     if (angle < output.angle_min || angle > output.angle_max)
     {
       NODELET_DEBUG("rejected for angle %f not in range (%f, %f)\n", angle, output.angle_min, output.angle_max);
@@ -235,16 +241,14 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
 
     // overwrite range at laserscan ray if new range is smaller
     int index = (angle - output.angle_min) / output.angle_increment;
-    if (range < output.ranges[index])
-    {
-      output.ranges[index] = range;
-    }
+    //if (range < output.ranges[index])
+    output.ranges[index] = range;
   }
   for(int i = 0;i<output.ranges.size();i++)
-    {
-      if(output.ranges[i] == std::numeric_limits<double>::infinity())
-        output.ranges[i] = 0;
-    }
+  {
+    if(output.ranges[i] == 26)
+      output.ranges[i] = 0;
+  }
   pub_.publish(output);
 }
 }  // namespace pointcloud_to_laserscan
