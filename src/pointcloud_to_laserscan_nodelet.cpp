@@ -72,7 +72,7 @@ void PointCloudToLaserScanNodelet::onInit()
 
   int concurrency_level;
   private_nh_.param<int>("concurrency_level", concurrency_level, 1);
-  private_nh_.param<bool>("use_inf", use_inf_, true);
+  private_nh_.param<bool>("use_inf", use_inf_, false);
 
   // Check if explicitly single threaded, otherwise, let nodelet manager dictate thread pool size
   if (concurrency_level == 1)
@@ -108,7 +108,7 @@ void PointCloudToLaserScanNodelet::onInit()
     sub_.registerCallback(boost::bind(&PointCloudToLaserScanNodelet::cloudCb, this, _1));
   }
 
-  pub_ = nh_.advertise<sensor_msgs::LaserScan>("scan", 10, boost::bind(&PointCloudToLaserScanNodelet::connectCb, this),
+  pub_ = nh_.advertise<sensor_msgs::LaserScan>("scan_from_p2", 10, boost::bind(&PointCloudToLaserScanNodelet::connectCb, this),
                                                boost::bind(&PointCloudToLaserScanNodelet::disconnectCb, this));
 }
 
@@ -118,7 +118,7 @@ void PointCloudToLaserScanNodelet::connectCb()
   if (pub_.getNumSubscribers() > 0 && sub_.getSubscriber().getNumPublishers() == 0)
   {
     NODELET_INFO("Got a subscriber to scan, starting subscriber to pointcloud");
-    sub_.subscribe(nh_, "cloud_in", input_queue_size_);
+    sub_.subscribe(nh_, "cloud", input_queue_size_);
   }
 }
 
@@ -240,6 +240,11 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
       output.ranges[index] = range;
     }
   }
+  for(int i = 0;i<output.ranges.size();i++)
+    {
+      if(output.ranges[i] == std::numeric_limits<double>::infinity())
+        output.ranges[i] = 0;
+    }
   pub_.publish(output);
 }
 }  // namespace pointcloud_to_laserscan
